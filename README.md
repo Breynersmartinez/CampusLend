@@ -1,236 +1,205 @@
-# CampusLend
-SaaS web system that automates the management of equipment and room loans in university institutions, replacing manual Excel-based processes with a real-time solution that includes inventory control, penalty validation, and automatic detection of overdue items.
+# Entidades y Atributos - Sistema CampusLend
+## Préstamo y Reserva de Salas y Computadores Portátiles
 
+---
 
-#  Entidad-Relación del Sistema de Préstamos
+## 1. EMPLEADO
+**Descripción:** Usuarios administradores y personal de TI que gestionan el sistema
 
-INSTITUCION
------------
+### Atributos:
+- ID_Empleado (PK)
+- Numero_Identificacion (UNIQUE)
+- Nombre
+- Correo_Institucional (UNIQUE, dominio @ucc.edu.co)
+- Contraseña (encriptada)
+- Rol (Administrador, Personal_TI)
+- Departamento
+- Numero_Telefonico
+- Estado (Activo, Inactivo)
+- Fecha_Ingreso
+- Fecha_Desactivacion (nullable)
+- Motivo_Desactivacion (nullable)
 
+---
 
+## 2. ESTUDIANTE
+**Descripción:** Usuarios que realizan préstamos de computadores y reservas de salas
 
+### Atributos:
+- ID_Estudiante (PK)
+- Numero_Identificacion (UNIQUE)
+- Nombre
+- Correo_Institucional (UNIQUE, dominio @campusucc.edu.co)
+- Contraseña (encriptada)
+- Programa_Academico
+- Semestre
+- Estado_Academico (Activo, Inactivo)
+- Multas_Totales_Pendientes
+- Estado (Activo, Inactivo)
+- Fecha_Registro
+- Fecha_Desactivacion (nullable)
+- Historial_Prestamos (relación)
 
-- institucion_id (PK)
-- nombre (UNIQUE)
-- sigla (UNIQUE)
-- ciudad
-- pais
-- estado_suscripcion
-- plan
-- fecha_inicio_suscripcion
-- fecha_vencimiento_suscripcion
+---
 
-USUARIO
--------
-- usuario_id (PK)
-- email (UNIQUE)
-- contraseña_hash
-- nombre_completo
-- rol
-- estado
-- institucion_id (FK→INSTITUCION)
-- ultimo_login
-- intentos_fallidos
+## 3. SALA
+**Descripción:** Espacios de estudio o trabajo disponibles para reserva
 
-ESTUDIANTE
+### Atributos:
+- ID_Sala (PK)
+- Nombre
+- Torre
+- Piso
+- Numero_Sala
+- Capacidad_Maxima
+- Equipamiento (Proyector, Tablero, Computadores, etc.)
+- Horario_Disponibilidad_Inicio (hora)
+- Horario_Disponibilidad_Fin (hora)
+- Estado (Disponible, Mantenimiento, Inactivo)
+- Responsable (nullable, FK a Empleado)
+- Fecha_Registro
+- Ubicacion_Unica (validación)
 
-----------
-- estudiante_id (PK, FK→USUARIO)
-- carnet_numero (UNIQUE)
-- numero_cedula (UNIQUE)
-- programa_academico
-- estado_academico
-- multas_totales_pendientes
-- numero_atrasos
-- total_prestamos
+---
 
-EQUIPO
-------
-- equipo_id (PK)
-- codigo_equipo (UNIQUE)
-- nombre
-- categoria
-- especificaciones_tecnicas (JSON)
-- ubicacion_fisica
-- estado
-- condicion
-- institucion_id (FK→INSTITUCION)
-- valor_reposicion
-- fecha_adquisicion
+## 4. COMPUTADORA (Portátil)
+**Descripción:** Equipos portátiles disponibles para préstamo
 
-SALON
------
-- salon_id (PK)
-- codigo_salon (UNIQUE)
-- nombre
-- ubicacion
-- capacidad_personas
-- equipos_incluidos (JSON)
-- horario_disponibilidad_inicio
-- horario_disponibilidad_fin
-- institucion_id (FK→INSTITUCION)
+### Atributos:
+- ID_Computadora (PK)
+- Numero_Serie (UNIQUE)
+- Modelo
+- Marca
+- Especificaciones_Tecnicas (RAM, Almacenamiento, Procesador)
+- Estado (Disponible, Prestado, Mantenimiento, Inactivo)
+- Responsable_Actual (nullable, FK a Estudiante)
+- Fecha_Registro
+- Fecha_Mantenimiento_Ultimo (nullable)
+- Ubicacion_Actual
+- Condicion_Fisica (Excelente, Buena, Regular, Mala)
 
-PRESTAMO
---------
-- prestamo_id (PK)
-- numero_prestamo (UNIQUE)
-- estudiante_id (FK→ESTUDIANTE)
-- equipo_id (FK→EQUIPO, NULLABLE)
-- salon_id (FK→SALON, NULLABLE)
-- reserva_id (FK→RESERVA, NULLABLE)
-- fecha_hora_inicio
-- fecha_hora_plazo_cierre
-- fecha_hora_fin_real
-- tipo_prestamo
-- estado
-- condicion_inicial
-- condicion_final
-- personal_ti_inicio_id (FK→USUARIO)
-- personal_ti_fin_id (FK→USUARIO)
-- institucion_id (FK→INSTITUCION)
+---
 
-RESERVA
--------
-- reserva_id (PK)
-- numero_reserva (UNIQUE)
-- estudiante_id (FK→ESTUDIANTE)
-- equipo_id (FK→EQUIPO, NULLABLE)
-- salon_id (FK→SALON, NULLABLE)
-- fecha_inicio_reserva
-- fecha_fin_reserva
-- estado
-- codigo_qr_checkin
-- fecha_checkin_real
-- institucion_id (FK→INSTITUCION)
+## 5. PRESTAMO
+**Descripción:** Registro de préstamos de computadoras
 
-SANCION
--------
-- sancion_id (PK)
-- estudiante_id (FK→ESTUDIANTE)
-- razon
-- descripcion_razon
-- fecha_inicio
-- fecha_fin
-- duracion_dias
-- estado
-- usuario_que_la_impuso_id (FK→USUARIO)
-- institucion_id (FK→INSTITUCION)
+### Atributos:
+- ID_Prestamo (PK)
+- ID_Estudiante (FK)
+- ID_Computadora (FK)
+- Fecha_Prestamo
+- Fecha_Devolucion_Programada
+- Fecha_Devolucion_Real (nullable)
+- Estado (Activo, Devuelto, Vencido, Cancelado)
+- Multa_Generada (si aplica)
+- Observaciones (nullable)
+- Empleado_Autoriza (FK a Empleado)
 
-MULTA
------
-- multa_id (PK)
-- estudiante_id (FK→ESTUDIANTE)
-- prestamo_id (FK→PRESTAMO)
-- monto
-- razon
-- minutos_atraso
-- tarifa_por_hora
-- estado
-- fecha_pago
-- metodo_pago
-- usuario_que_pago_id (FK→USUARIO)
-- institucion_id (FK→INSTITUCION)
+---
 
-REPORTE_DAÑO
------------
-- reporte_daño_id (PK)
-- prestamo_id (FK→PRESTAMO)
-- equipo_id (FK→EQUIPO)
-- estudiante_id (FK→ESTUDIANTE)
-- descripcion_daño
-- fotos_daño (JSON)
-- severidad
-- costo_estimado_reparacion
-- responsabilidad
-- estado_daño
-- usuario_que_reporto_id (FK→USUARIO)
-- institucion_id (FK→INSTITUCION)
+## 6. RESERVA
+**Descripción:** Registro de reservas de salas
 
-PARAMETRO_SISTEMA
-------------------
-- parametro_id (PK)
-- institucion_id (FK→INSTITUCION)
-- clave (UNIQUE con institucion_id)
-- valor
-- tipo_valor
-- es_configurable
-- modificado_por_id (FK→USUARIO)
+### Atributos:
+- ID_Reserva (PK)
+- ID_Estudiante (FK)
+- ID_Sala (FK)
+- Fecha_Reserva
+- Hora_Inicio
+- Hora_Fin
+- Estado (Confirmada, Cancelada, Completada, No_Presentado)
+- Proposito (opcional)
+- Num_Participantes (opcional)
+- Fecha_Creacion_Reserva
+- Empleado_Autoriza (FK a Empleado, nullable)
 
-NOTIFICACION
------------
-- notificacion_id (PK)
-- estudiante_id (FK→ESTUDIANTE)
-- tipo
-- asunto
-- contenido
-- canal
-- estado_envio
-- fecha_programada
-- fecha_envio_real
-- institucion_id (FK→INSTITUCION)
-- datos_contexto (JSON)
+---
 
-AUDITORIA
----------
-- auditoria_id (PK)
-- usuario_id (FK→USUARIO)
-- tipo_evento
-- entidad_afectada
-- id_entidad_afectada
-- valores_anteriores (JSON)
-- valores_nuevos (JSON)
-- descripcion
-- ip_origen
-- resultado
-- institucion_id (FK→INSTITUCION)
-- fecha_creacion
+## 7. MULTA
+**Descripción:** Registro de multas por incumplimiento
 
-HISTORIAL_EQUIPO
-----------------
-- historial_id (PK)
-- equipo_id (FK→EQUIPO)
-- estado_anterior
-- estado_nuevo
-- razon_cambio
-- usuario_que_cambio_id (FK→USUARIO)
-- fecha_cambio
-- institucion_id (FK→INSTITUCION)
+### Atributos:
+- ID_Multa (PK)
+- ID_Estudiante (FK)
+- ID_Prestamo (FK, nullable)
+- Tipo_Multa (Retardo_Devolucion, Daño_Equipo, Otro)
+- Monto
+- Fecha_Generacion
+- Estado (Pendiente, Pagada, Condonada)
+- Descripcion
+- Fecha_Pago (nullable)
 
-RELACIONES PRINCIPALES:
-INSTITUCION (1) ──→ (N) USUARIO
-INSTITUCION (1) ──→ (N) EQUIPO
-INSTITUCION (1) ──→ (N) SALON
-INSTITUCION (1) ──→ (N) PRESTAMO
-INSTITUCION (1) ──→ (N) RESERVA
-INSTITUCION (1) ──→ (N) ESTUDIANTE
-INSTITUCION (1) ──→ (N) SANCION
-INSTITUCION (1) ──→ (N) MULTA
+---
 
-USUARIO (1) ──────────→ (N) USUARIO (creado_por)
-USUARIO (1) ──────────→ (N) PRESTAMO (personal_ti_inicio)
-USUARIO (1) ──────────→ (N) PRESTAMO (personal_ti_fin)
-USUARIO (1) ──────────→ (N) SANCION
-USUARIO (1) ──────────→ (N) MULTA
-USUARIO (1) ──────────→ (N) AUDITORIA
-USUARIO (1) ──────────→ (N) REPORTE_DAÑO
+## 8. AUDITORIA
+**Descripción:** Registro de cambios y operaciones en el sistema
 
-ESTUDIANTE (1) ────────→ (N) PRESTAMO
-ESTUDIANTE (1) ────────→ (N) RESERVA
-ESTUDIANTE (1) ────────→ (N) SANCION
-ESTUDIANTE (1) ────────→ (N) MULTA
-ESTUDIANTE (1) ────────→ (N) NOTIFICACION
-ESTUDIANTE (1) ────────→ (N) REPORTE_DAÑO
+### Atributos:
+- ID_Auditoria (PK)
+- Tabla_Afectada
+- Tipo_Operacion (INSERT, UPDATE, DELETE)
+- ID_Registro_Afectado
+- Usuario_Realiza (FK a Empleado)
+- Fecha_Hora
+- Cambios_Realizados (descripción)
+- Razon_Cambio (nullable)
 
-EQUIPO (1) ──────────→ (N) PRESTAMO
-EQUIPO (1) ──────────→ (N) RESERVA
-EQUIPO (1) ──────────→ (N) REPORTE_DAÑO
-EQUIPO (1) ──────────→ (N) HISTORIAL_EQUIPO
+---
 
-SALON (1) ──────────→ (N) PRESTAMO
-SALON (1) ──────────→ (N) RESERVA
+## 9. ACCESO_SESION
+**Descripción:** Registro de accesos al sistema
 
-PRESTAMO (1) ───────→ (N) MULTA
-PRESTAMO (1) ───────→ (N) REPORTE_DAÑO
-PRESTAMO (1) ───────→ (1) RESERVA (opcional)
+### Atributos:
+- ID_Sesion (PK)
+- ID_Usuario (FK, puede ser Estudiante o Empleado)
+- Tipo_Usuario (Estudiante, Empleado)
+- Fecha_Inicio_Sesion
+- Fecha_Cierre_Sesion (nullable)
+- Duracion_Sesion
+- IP_Acceso
+- Dispositivo
 
-RESERVA (1) ────────→ (1) PRESTAMO (cuando check-in)
+---
+
+## RELACIONES IDENTIFICADAS
+
+### EMPLEADO
+- 1:N con SALA (responsabiliza salas)
+- 1:N con PRESTAMO (autoriza préstamos)
+- 1:N con RESERVA (autoriza reservas)
+- 1:N con AUDITORIA (realiza cambios)
+
+### ESTUDIANTE
+- 1:N con PRESTAMO (realiza)
+- 1:N con RESERVA (realiza)
+- 1:N con MULTA (incurre)
+- 1:N con ACCESO_SESION (accede)
+
+### SALA
+- 1:N con RESERVA (es reservada)
+- 0:1 con EMPLEADO (responsable)
+
+### COMPUTADORA
+- 1:N con PRESTAMO (es prestada)
+- 0:1 con ESTUDIANTE (actualmente prestada a)
+
+### PRESTAMO
+- N:1 con ESTUDIANTE
+- N:1 con COMPUTADORA
+- N:1 con EMPLEADO
+- 1:N con MULTA
+
+### RESERVA
+- N:1 con ESTUDIANTE
+- N:1 con SALA
+- N:1 con EMPLEADO (nullable)
+
+### MULTA
+- N:1 con ESTUDIANTE
+- N:1 con PRESTAMO (nullable)
+
+### AUDITORIA
+- N:1 con EMPLEADO
+
+### ACCESO_SESION
+- N:1 con ESTUDIANTE o EMPLEADO
