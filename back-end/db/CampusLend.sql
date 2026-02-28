@@ -3,7 +3,7 @@ CREATE EXTENSION IF NOT EXISTS "pgcrypto";   -- for gen_random_uuid()
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";  -- UUID alternative
 
 
--- ENUMERATED TYPES
+-- ENUMERATED TYPES (tipos de num)
 
 CREATE TYPE employee_role       AS ENUM ('ADMINISTRATOR', 'IT_STAFF');
 CREATE TYPE general_status      AS ENUM ('ACTIVE', 'INACTIVE');
@@ -17,7 +17,7 @@ CREATE TYPE audit_action        AS ENUM ('INSERT', 'UPDATE', 'DELETE', 'DEACTIVA
 CREATE TYPE resource_type       AS ENUM ('ROOM', 'COMPUTER');
 
 
--- TABLE: employee
+--  employee (empleado)
 -- Stores IT personnel and system administrators
 CREATE TABLE employee (
     id_employee             SERIAL          PRIMARY KEY,
@@ -40,7 +40,7 @@ COMMENT ON COLUMN employee.password_hash IS 'Password encrypted with BCrypt (Spr
 COMMENT ON COLUMN employee.role IS 'ADMINISTRATOR: full access | IT_STAFF: operational management';
 
 
--- TABLE: student
+-- student (estudiante)
 -- Stores students who can make reservations and loans
 CREATE TABLE student (
     id_student              SERIAL          PRIMARY KEY,
@@ -62,7 +62,7 @@ COMMENT ON TABLE student IS 'Registered students who can reserve rooms or reques
 COMMENT ON COLUMN student.pending_fines IS 'Total accumulated amount of unpaid fines (calculated)';
 
 
--- TABLE: room
+-- room (salas)
 -- Study and work rooms available for reservation
 CREATE TABLE room (
     id_room             SERIAL          PRIMARY KEY,
@@ -85,7 +85,7 @@ COMMENT ON COLUMN room.opening_time IS 'Room opening time (e.g., 07:00)';
 COMMENT ON COLUMN room.closing_time IS 'Room closing time (e.g., 22:00)';
 
 
--- TABLE: room_equipment
+-- room_equipment (equipamento de la sala )
 -- Equipment available per room (decomposed N:M relationship)
 CREATE TABLE room_equipment (
     id_equipment        SERIAL              PRIMARY KEY,
@@ -100,7 +100,7 @@ CREATE TABLE room_equipment (
 COMMENT ON TABLE room_equipment IS 'Equipment inventory available in each room';
 
 
--- TABLE: computer
+--  computer (computador)
 -- Portable devices available for loan and reservation
 CREATE TABLE computer (
     id_computer         SERIAL              PRIMARY KEY,
@@ -123,7 +123,7 @@ COMMENT ON COLUMN computer.inventory_code IS 'Unique physical inventory code (la
 COMMENT ON COLUMN computer.qr_code IS 'QR or barcode generated for quick identification';
 
 
--- TABLE: reservation
+--  reservation (reservas)
 -- Reservations of rooms or computers made by students
 -- A reservation can be for a room OR a computer (never both)
 CREATE TABLE reservation (
@@ -163,11 +163,11 @@ CREATE UNIQUE INDEX idx_reservation_computer_no_overlap
     WHERE status = 'ACTIVE' AND id_computer IS NOT NULL;
 
 
--- TABLE: loan
+-- loan (prestamo)
 -- Computer loans. Can originate from a prior reservation
 -- or be a direct loan without reservation.
 CREATE TABLE loan (
-    id_loan                 SERIAL          PRIMARY KEY,
+    id_loan                 SERIAL          NOT NULL PRIMARY KEY,
     id_student              INTEGER         NOT NULL REFERENCES student(id_student),
     id_computer             INTEGER         NOT NULL REFERENCES computer(id_computer),
     id_employee_registrant  INTEGER         NOT NULL REFERENCES employee(id_employee),
@@ -189,7 +189,7 @@ COMMENT ON COLUMN loan.id_reservation IS 'Optional FK: if from prior reservation
 COMMENT ON COLUMN loan.id_employee_registrant IS 'IT employee who physically delivered the equipment';
 
 
--- TABLE: fine
+--  fine (multa)
 -- Fines generated for late return or other non-compliance
 CREATE TABLE fine (
     id_fine             SERIAL          PRIMARY KEY,
@@ -207,7 +207,7 @@ CREATE TABLE fine (
 COMMENT ON TABLE fine IS 'Economic fines for non-compliance in loans. Updates pending_fines in student';
 
 
--- TABLE: audit
+-- audit (auditoria)
 -- Immutable record of all critical system operations
 CREATE TABLE audit (
     id_audit            BIGSERIAL       PRIMARY KEY,
@@ -228,192 +228,8 @@ COMMENT ON COLUMN audit.previous_data IS 'Record state before change (JSON)';
 COMMENT ON COLUMN audit.new_data IS 'Record state after change (JSON)';
 
 
--- PERFORMANCE INDICES
 
--- Employee
-CREATE INDEX idx_employee_email  ON employee (institutional_email);
-CREATE INDEX idx_employee_status  ON employee (status);
-CREATE INDEX idx_employee_role     ON employee (role);
-
--- Student
-CREATE INDEX idx_student_email        ON student (institutional_email);
-CREATE INDEX idx_student_status       ON student (academic_status);
-CREATE INDEX idx_student_identification ON student (identification_number);
-
--- Room
-CREATE INDEX idx_room_status    ON room (status);
-CREATE INDEX idx_room_location  ON room (building, floor);
-
--- Computer
-CREATE INDEX idx_computer_status    ON computer (status);
-CREATE INDEX idx_computer_code      ON computer (inventory_code);
-
--- Reservation
-CREATE INDEX idx_reservation_student     ON reservation (id_student);
-CREATE INDEX idx_reservation_room        ON reservation (id_room);
-CREATE INDEX idx_reservation_computer    ON reservation (id_computer);
-CREATE INDEX idx_reservation_date_status ON reservation (reservation_date, status);
-
--- Loan
-CREATE INDEX idx_loan_student    ON loan (id_student);
-CREATE INDEX idx_loan_computer   ON loan (id_computer);
-CREATE INDEX idx_loan_status     ON loan (status);
-CREATE INDEX idx_loan_dates      ON loan (request_date, expected_return_date);
-
--- Fine
-CREATE INDEX idx_fine_student ON fine (id_student);
-CREATE INDEX idx_fine_status  ON fine (status);
-
--- Audit
-CREATE INDEX idx_audit_table    ON audit (affected_table);
-CREATE INDEX idx_audit_date     ON audit (date_time DESC);
-CREATE INDEX idx_audit_employee ON audit (id_employee);
-
-/*
--- FUNCTION: automatically update updated_at
-CREATE OR REPLACE FUNCTION fn_set_updated_at()
-RETURNS TRIGGER AS $$
-BEGIN
-    NEW.updated_at = NOW();
-    RETURN NEW;
-END;
-$$ LANGUAGE plpgsql;
-
--- Triggers for updated_at
-CREATE TRIGGER trg_employee_updated_at
-    BEFORE UPDATE ON employee
-    FOR EACH ROW EXECUTE FUNCTION fn_set_updated_at();
-
-CREATE TRIGGER trg_student_updated_at
-    BEFORE UPDATE ON student
-    FOR EACH ROW EXECUTE FUNCTION fn_set_updated_at();
-
-CREATE TRIGGER trg_room_updated_at
-    BEFORE UPDATE ON room
-    FOR EACH ROW EXECUTE FUNCTION fn_set_updated_at();
-
-CREATE TRIGGER trg_computer_updated_at
-    BEFORE UPDATE ON computer
-    FOR EACH ROW EXECUTE FUNCTION fn_set_updated_at();
-
-CREATE TRIGGER trg_reservation_updated_at
-    BEFORE UPDATE ON reservation
-    FOR EACH ROW EXECUTE FUNCTION fn_set_updated_at();
-
-CREATE TRIGGER trg_loan_updated_at
-    BEFORE UPDATE ON loan
-    FOR EACH ROW EXECUTE FUNCTION fn_set_updated_at();
-
-
--- FUNCTION: synchronize pending_fines in student
--- Executed when inserting or updating a fine
-CREATE OR REPLACE FUNCTION fn_sync_pending_fines()
-RETURNS TRIGGER AS $$
-BEGIN
-    UPDATE student
-    SET pending_fines = (
-        SELECT COALESCE(SUM(amount), 0)
-        FROM fine
-        WHERE id_student = NEW.id_student
-          AND status = 'PENDING'
-    )
-    WHERE id_student = NEW.id_student;
-    RETURN NEW;
-END;
-$$ LANGUAGE plpgsql;
-
-CREATE TRIGGER trg_sync_fines
-    AFTER INSERT OR UPDATE ON fine
-    FOR EACH ROW EXECUTE FUNCTION fn_sync_pending_fines();
-
-
--- FUNCTION: when creating a loan from a reservation, mark the reservation
-CREATE OR REPLACE FUNCTION fn_convert_reservation_to_loan()
-RETURNS TRIGGER AS $$
-BEGIN
-    IF NEW.id_reservation IS NOT NULL THEN
-        UPDATE reservation
-        SET status = 'CONVERTED_TO_LOAN'
-        WHERE id_reservation = NEW.id_reservation;
-    END IF;
-
-    -- Change computer status to ON_LOAN
-    UPDATE computer
-    SET status = 'ON_LOAN'
-    WHERE id_computer = NEW.id_computer;
-
-    RETURN NEW;
-END;
-$$ LANGUAGE plpgsql;
-
-CREATE TRIGGER trg_loan_insert
-    AFTER INSERT ON loan
-    FOR EACH ROW EXECUTE FUNCTION fn_convert_reservation_to_loan();
-
-
--- FUNCTION: when returning a loan, free the computer
-CREATE OR REPLACE FUNCTION fn_return_loan()
-RETURNS TRIGGER AS $$
-BEGIN
-    IF NEW.status = 'RETURNED' AND OLD.status = 'ACTIVE' THEN
-        UPDATE computer
-        SET status = 'AVAILABLE'
-        WHERE id_computer = NEW.id_computer;
-    END IF;
-    RETURN NEW;
-END;
-$$ LANGUAGE plpgsql;
-
-CREATE TRIGGER trg_loan_return
-    AFTER UPDATE ON loan
-    FOR EACH ROW EXECUTE FUNCTION fn_return_loan();
-
-
--- FUNCTION: validate that no active loan exists before
--- deactivating or changing status of a computer
--- (Validation in application layer is also recommended)
-CREATE OR REPLACE FUNCTION fn_validate_computer_free()
-RETURNS TRIGGER AS $$
-BEGIN
-    IF NEW.status IN ('INACTIVE', 'MAINTENANCE') AND OLD.status = 'ON_LOAN' THEN
-        RAISE EXCEPTION 'Cannot change status of a computer with active loan (id: %)', OLD.id_computer;
-    END IF;
-    RETURN NEW;
-END;
-$$ LANGUAGE plpgsql;
-
-CREATE TRIGGER trg_computer_status_check
-    BEFORE UPDATE ON computer
-    FOR EACH ROW EXECUTE FUNCTION fn_validate_computer_free();
-
-
--- FUNCTION: validate that the system never has zero administrators
-
-CREATE OR REPLACE FUNCTION fn_validate_last_admin()
-RETURNS TRIGGER AS $$
-DECLARE
-    total_admins INTEGER;
-BEGIN
-    IF NEW.status = 'INACTIVE' AND OLD.status = 'ACTIVE' AND NEW.role = 'ADMINISTRATOR' THEN
-        SELECT COUNT(*) INTO total_admins
-        FROM employee
-        WHERE role = 'ADMINISTRATOR' AND status = 'ACTIVE';
-
-        IF total_admins <= 1 THEN
-            RAISE EXCEPTION 'Cannot deactivate the only active administrator in the system';
-        END IF;
-    END IF;
-    RETURN NEW;
-END;
-$$ LANGUAGE plpgsql;
-
-CREATE TRIGGER trg_employee_last_admin
-    BEFORE UPDATE ON employee
-    FOR EACH ROW EXECUTE FUNCTION fn_validate_last_admin();
-
-*/
-
--- VIEWS
+-- VIEWS (vistas)
 
 -- Available computers for loan/reservation
 CREATE VIEW v_computers_available AS
