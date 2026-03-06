@@ -1,32 +1,21 @@
+SET TIME ZONE 'UTC';
+
 -- EXTENSIONS
 CREATE EXTENSION IF NOT EXISTS "pgcrypto";   -- for gen_random_uuid()
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";  -- UUID alternative
 
 
--- ENUMERATED TYPES (tipos de num)
-
-CREATE TYPE employee_role       AS ENUM ('ADMINISTRATOR', 'IT_STAFF');
-CREATE TYPE general_status      AS ENUM ('ACTIVE', 'INACTIVE');
-CREATE TYPE room_status         AS ENUM ('AVAILABLE', 'MAINTENANCE', 'INACTIVE');
-CREATE TYPE computer_status     AS ENUM ('AVAILABLE', 'ON_LOAN', 'MAINTENANCE', 'INACTIVE');
-CREATE TYPE reservation_status  AS ENUM ('ACTIVE', 'CANCELLED', 'COMPLETED', 'CONVERTED_TO_LOAN');
-CREATE TYPE loan_status         AS ENUM ('ACTIVE', 'RETURNED', 'OVERDUE');
-CREATE TYPE fine_status         AS ENUM ('PENDING', 'PAID');
-CREATE TYPE equipment_type      AS ENUM ('PROJECTOR', 'WHITEBOARD', 'COMPUTERS', 'AIR_CONDITIONING', 'VIDEOBEAM', 'TELEVISION', 'OTHER');
-CREATE TYPE audit_action        AS ENUM ('INSERT', 'UPDATE', 'DELETE', 'DEACTIVATE', 'LOGIN', 'LOGOUT');
-CREATE TYPE resource_type       AS ENUM ('ROOM', 'COMPUTER');
-
 
 --  employee (empleado)
 -- Stores IT personnel and system administrators
 CREATE TABLE employee (
-    id_employee             SERIAL          PRIMARY KEY,
-    identification_number   VARCHAR(20)     NOT NULL UNIQUE,
-    full_name               VARCHAR(150)    NOT NULL,
-    institutional_email     VARCHAR(100)    NOT NULL UNIQUE
-                                CHECK (institutional_email LIKE '%@ucc.edu.co'),
-    password_hash           VARCHAR(255)    NOT NULL,
-    role                    employee_role   NOT NULL DEFAULT 'IT_STAFF',
+    id_employee             UUID          PRIMARY KEY,
+    id_card   VARCHAR(20)     NOT NULL UNIQUE,
+    first_name               VARCHAR(150)    NOT NULL,
+    last_name               VARCHAR(150)    NOT NULL,
+    institutional_email     VARCHAR(100)    NOT NULL UNIQUE CHECK (institutional_email LIKE '%@ucc.edu.co'),
+    password                VARCHAR(255)    NOT NULL,
+    role                    VARCHAR(50)   NOT NULL DEFAULT 'USER',
     department              VARCHAR(100)    NOT NULL,
     phone                   VARCHAR(20),
     status                  general_status  NOT NULL DEFAULT 'ACTIVE',
@@ -43,12 +32,12 @@ COMMENT ON COLUMN employee.role IS 'ADMINISTRATOR: full access | IT_STAFF: opera
 -- student (estudiante)
 -- Stores students who can make reservations and loans
 CREATE TABLE student (
-    id_student              SERIAL          PRIMARY KEY,
-    identification_number   VARCHAR(20)     NOT NULL UNIQUE,
-    full_name               VARCHAR(150)    NOT NULL,
-    institutional_email     VARCHAR(100)    NOT NULL UNIQUE
-                                CHECK (institutional_email LIKE '%@campusucc.edu.co'),
-    password_hash           VARCHAR(255)    NOT NULL,
+    id_student              UUID          PRIMARY KEY,
+    id_card   VARCHAR(20)     NOT NULL UNIQUE,
+    first_name               VARCHAR(150)    NOT NULL,
+    last_name               VARCHAR(150)    NOT NULL,
+    institutional_email     VARCHAR(100)    NOT NULL UNIQUE CHECK (institutional_email LIKE '%@campusucc.edu.co'),
+    password           VARCHAR(255)    NOT NULL,
     academic_program        VARCHAR(150)    NOT NULL,
     semester                SMALLINT        NOT NULL CHECK (semester BETWEEN 1 AND 12),
     academic_status         general_status  NOT NULL DEFAULT 'ACTIVE',
@@ -65,7 +54,7 @@ COMMENT ON COLUMN student.pending_fines IS 'Total accumulated amount of unpaid f
 -- room (salas)
 -- Study and work rooms available for reservation
 CREATE TABLE room (
-    id_room             SERIAL          PRIMARY KEY,
+    id_room             UUID          PRIMARY KEY,
     name                VARCHAR(100)    NOT NULL,
     building            VARCHAR(50)     NOT NULL, -- torre
     floor               SMALLINT        NOT NULL CHECK (floor >= 0), -- piso
@@ -76,8 +65,7 @@ CREATE TABLE room (
     status              room_status     NOT NULL DEFAULT 'AVAILABLE', -- estado
     created_at          TIMESTAMPTZ     NOT NULL DEFAULT NOW(),
     updated_at          TIMESTAMPTZ     NOT NULL DEFAULT NOW(),
-
-    UNIQUE (building, floor, room_number)   -- Unique location
+    UNIQUE (building, floor, room_number)   -- Unique location (ubicaciones unicas)
 );
 
 COMMENT ON TABLE room IS 'Study and work rooms available for reservation by students';
@@ -88,22 +76,23 @@ COMMENT ON COLUMN room.closing_time IS 'Room closing time (e.g., 22:00)';
 -- room_equipment (equipamento de la sala )
 -- Equipment available per room (decomposed N:M relationship)
 CREATE TABLE room_equipment (
-    id_equipment        SERIAL              PRIMARY KEY,
-    id_room             INTEGER             NOT NULL REFERENCES room(id_room) ON DELETE CASCADE,
+    id_equipment        UUID              PRIMARY KEY,
+    id_room             INTEGER             NOT NULL,
     type                equipment_type      NOT NULL,
     quantity            SMALLINT            NOT NULL DEFAULT 1 CHECK (quantity > 0),
     notes               TEXT,
-
     UNIQUE (id_room, type)
 );
 
+
+ALTER TABLE room_equipment ADD CONSTRAINT pk_id_room FOREIGN KEY (id_room) REFERENCES room(id_room); --LLAVE FORANEA DE SALON
 COMMENT ON TABLE room_equipment IS 'Equipment inventory available in each room';
 
 
 --  computer (computador)
 -- Portable devices available for loan and reservation
 CREATE TABLE computer (
-    id_computer         SERIAL              PRIMARY KEY,
+    id_computer         UUID              PRIMARY KEY,
     inventory_code      VARCHAR(50)         NOT NULL UNIQUE,
     model               VARCHAR(100)        NOT NULL,
     brand               VARCHAR(100)        NOT NULL,
@@ -127,11 +116,11 @@ COMMENT ON COLUMN computer.qr_code IS 'QR or barcode generated for quick identif
 -- Reservations of rooms or computers made by students
 -- A reservation can be for a room OR a computer (never both)
 CREATE TABLE reservation (
-    id_reservation      SERIAL          PRIMARY KEY,
+    id_reservation      UUID          PRIMARY KEY,
     id_student          INTEGER         NOT NULL REFERENCES student(id_student),
     resource_type       resource_type   NOT NULL,
-    id_room             INTEGER         REFERENCES room(id_room),
-    id_computer         INTEGER         REFERENCES computer(id_computer),
+    id_room             INTEGER         NULLABLE,
+    id_computer         INTEGER         NULLABLE,
     reservation_date    DATE            NOT NULL,
     start_time          TIME            NOT NULL,
     end_time            TIME            NOT NULL CHECK (end_time > start_time),
@@ -147,27 +136,18 @@ CREATE TABLE reservation (
     )
 );
 
-COMMENT ON TABLE reservation IS 'Reservations of rooms or computers. The resource_type determines which FK applies';
+ALTER TABLE reservation ADD CONSTRAINT pk_id_student FOREIGN KEY (id_student) REFERENCES student(id_student);
+
+    COMMENT ON TABLE reservation IS 'Reservations of rooms or computers. The resource_type determines which FK applies';
 COMMENT ON COLUMN reservation.resource_type IS 'ROOM: physical space reservation | COMPUTER: equipment reservation';
 COMMENT ON COLUMN reservation.status IS 'ACTIVE | CANCELLED | COMPLETED | CONVERTED_TO_LOAN (computers only)';
-
-
--- Index to avoid overlapping reservations in the same room
-CREATE UNIQUE INDEX idx_reservation_room_no_overlap
-    ON reservation (id_room, reservation_date, start_time, end_time)
-    WHERE status = 'ACTIVE' AND id_room IS NOT NULL;
-
--- Index to avoid overlapping reservations on the same computer
-CREATE UNIQUE INDEX idx_reservation_computer_no_overlap
-    ON reservation (id_computer, reservation_date, start_time, end_time)
-    WHERE status = 'ACTIVE' AND id_computer IS NOT NULL;
 
 
 -- loan (prestamo)
 -- Computer loans. Can originate from a prior reservation
 -- or be a direct loan without reservation.
 CREATE TABLE loan (
-    id_loan                 SERIAL          NOT NULL PRIMARY KEY,
+    id_loan                 UUID          NOT NULL PRIMARY KEY,
     id_student              INTEGER         NOT NULL REFERENCES student(id_student),
     id_computer             INTEGER         NOT NULL REFERENCES computer(id_computer),
     id_employee_registrant  INTEGER         NOT NULL REFERENCES employee(id_employee),
@@ -192,7 +172,7 @@ COMMENT ON COLUMN loan.id_employee_registrant IS 'IT employee who physically del
 --  fine (multa)
 -- Fines generated for late return or other non-compliance
 CREATE TABLE fine (
-    id_fine             SERIAL          PRIMARY KEY,
+    id_fine             UUID          PRIMARY KEY,
     id_student          INTEGER         NOT NULL REFERENCES student(id_student),
     id_loan             INTEGER         REFERENCES loan(id_loan),
     amount              NUMERIC(10,2)   NOT NULL CHECK (amount > 0),
@@ -210,7 +190,7 @@ COMMENT ON TABLE fine IS 'Economic fines for non-compliance in loans. Updates pe
 -- audit (auditoria)
 -- Immutable record of all critical system operations
 CREATE TABLE audit (
-    id_audit            BIGSERIAL       PRIMARY KEY,
+    id_audit            UUID       PRIMARY KEY,
     affected_table      VARCHAR(100)    NOT NULL,
     record_id           INTEGER,
     action              audit_action    NOT NULL,
@@ -288,26 +268,7 @@ ORDER BY s.pending_fines DESC;
 
 
 
--- INITIAL DATA: Default Admin
--- IMPORTANT: Change password on first login
--- BCrypt hash example for 'Admin@2026!'
+-- Alteracionde tablas
 
-INSERT INTO employee (
-    identification_number,
-    full_name,
-    institutional_email,
-    password_hash,
-    role,
-    department,
-    status,
-    hire_date
-) VALUES (
-    '00000001',
-    'IT Administrator',
-    'admin.dti@ucc.edu.co',
-    '$2a$12$PLACEHOLDER_HASH_CHANGE_ON_FIRST_LOGIN',
-    'ADMINISTRATOR',
-    'IT',
-    'ACTIVE',
-    CURRENT_DATE
-);
+
+-- Llaves foraneas
