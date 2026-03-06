@@ -135,6 +135,7 @@ CREATE TABLE reservation (
         (resource_type = 'COMPUTER'  AND id_computer IS NOT NULL      AND id_room IS NULL)
     )
 
+
 );
 
 ALTER TABLE reservation ADD CONSTRAINT pk_id_student FOREIGN KEY (id_student) REFERENCES student(id_student);
