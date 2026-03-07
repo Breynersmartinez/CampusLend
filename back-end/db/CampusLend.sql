@@ -113,6 +113,7 @@ COMMENT ON COLUMN computer.qr_code IS 'QR or barcode generated for quick identif
 
 
 
+
 --  reservation (reservas)
 -- Reservations of rooms or computers made by students
 -- A reservation can be for a room OR a computer (never both)
