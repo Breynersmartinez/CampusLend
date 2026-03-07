@@ -9,8 +9,8 @@ CREATE EXTENSION IF NOT EXISTS "uuid-ossp";  -- UUID alternative
 --  employee (empleado)
 -- Stores IT personnel and system administrators
 CREATE TABLE employee (
-    id_employee             UUID          PRIMARY KEY,
-    id_card   VARCHAR(20)     NOT NULL UNIQUE,
+    employee_id            UUID          PRIMARY KEY,
+    card_id    VARCHAR(20)     NOT NULL UNIQUE,
     first_name               VARCHAR(150)    NOT NULL,
     last_name               VARCHAR(150)    NOT NULL,
     institutional_email     VARCHAR(100)    NOT NULL UNIQUE CHECK (institutional_email LIKE '%@ucc.edu.co'),
@@ -32,7 +32,7 @@ COMMENT ON COLUMN employee.role IS 'ADMINISTRATOR: full access | IT_STAFF: opera
 -- student (estudiante)
 -- Stores students who can make reservations and loans
 CREATE TABLE student (
-    id_student              UUID          PRIMARY KEY,
+    student_id               UUID          PRIMARY KEY,
     id_card   VARCHAR(20)     NOT NULL UNIQUE,
     first_name               VARCHAR(150)    NOT NULL,
     last_name               VARCHAR(150)    NOT NULL,
@@ -54,7 +54,7 @@ COMMENT ON COLUMN student.pending_fines IS 'Total accumulated amount of unpaid f
 -- room (salas)
 -- Study and work rooms available for reservation
 CREATE TABLE room (
-    id_room             UUID          PRIMARY KEY,
+    room_id              UUID          PRIMARY KEY,
     name                VARCHAR(100)    NOT NULL,
     building            VARCHAR(50)     NOT NULL, -- torre
     floor               SMALLINT        NOT NULL CHECK (floor >= 0), -- piso
@@ -76,8 +76,8 @@ COMMENT ON COLUMN room.closing_time IS 'Room closing time (e.g., 22:00)';
 -- room_equipment (equipamento de la sala )
 -- Equipment available per room (decomposed N:M relationship)
 CREATE TABLE room_equipment (
-    id_equipment        UUID              PRIMARY KEY,
-    id_room             INTEGER             NOT NULL,
+    equipment_id         UUID              PRIMARY KEY,
+    room_id              INTEGER             NOT NULL,
     type                equipment_type      NOT NULL,
     quantity            SMALLINT            NOT NULL DEFAULT 1 CHECK (quantity > 0),
     notes               TEXT,
@@ -92,7 +92,7 @@ COMMENT ON TABLE room_equipment IS 'Equipment inventory available in each room';
 --  computer (computador)
 -- Portable devices available for loan and reservation
 CREATE TABLE computer (
-    id_computer         UUID              PRIMARY KEY,
+    computer_id          UUID              PRIMARY KEY,
     inventory_code      VARCHAR(50)         NOT NULL UNIQUE,
     model               VARCHAR(100)        NOT NULL,
     brand               VARCHAR(100)        NOT NULL,
@@ -118,11 +118,11 @@ COMMENT ON COLUMN computer.qr_code IS 'QR or barcode generated for quick identif
 -- Reservations of rooms or computers made by students
 -- A reservation can be for a room OR a computer (never both)
 CREATE TABLE reservation (
-    id_reservation      UUID          PRIMARY KEY,
-    id_student          INTEGER         NOT NULL REFERENCES student(id_student),
+    reservation_id       UUID          PRIMARY KEY,
+    student_id           INTEGER         NOT NULL REFERENCES student(id_student),
     resource_type       resource_type   NOT NULL,
-    id_room             INTEGER         NULLABLE,
-    id_computer         INTEGER         NULLABLE,
+    room_id              INTEGER         NULLABLE,
+    computer_id          INTEGER         NULLABLE,
     reservation_date    DATE            NOT NULL,
     start_time          TIME            NOT NULL,
     end_time            TIME            NOT NULL CHECK (end_time > start_time),
@@ -130,13 +130,6 @@ CREATE TABLE reservation (
     cancellation_reason TEXT,
     created_at          TIMESTAMPTZ     NOT NULL DEFAULT NOW(),
     updated_at          TIMESTAMPTZ     NOT NULL DEFAULT NOW(),
-
-    -- Only one of the two FKs can have a value according to resource_type
-    CONSTRAINT chk_resource_exclusive CHECK (
-        (resource_type = 'ROOM'      AND id_room IS NOT NULL           AND id_computer IS NULL) OR
-        (resource_type = 'COMPUTER'  AND id_computer IS NOT NULL      AND id_room IS NULL)
-    )
-
 
 );
 
@@ -151,11 +144,11 @@ COMMENT ON COLUMN reservation.status IS 'ACTIVE | CANCELLED | COMPLETED | CONVER
 -- Computer loans. Can originate from a prior reservation
 -- or be a direct loan without reservation.
 CREATE TABLE loan (
-    id_loan                 UUID          NOT NULL PRIMARY KEY,
-    id_student              INTEGER         NOT NULL REFERENCES student(id_student),
-    id_computer             INTEGER         NOT NULL REFERENCES computer(id_computer),
-    id_employee_registrant  INTEGER         NOT NULL REFERENCES employee(id_employee),
-    id_reservation          INTEGER         UNIQUE REFERENCES reservation(id_reservation),   -- nullable: direct loan
+    loan_id                  UUID          NOT NULL PRIMARY KEY,
+    student_id               INTEGER         NOT NULL REFERENCES student(id_student),
+    computer_id              INTEGER         NOT NULL REFERENCES computer(id_computer),
+    employee_registrant_id   INTEGER         NOT NULL REFERENCES employee(id_employee),
+    reservation_id           INTEGER         UNIQUE REFERENCES reservation(id_reservation),   -- nullable: direct loan
     request_date            TIMESTAMPTZ     NOT NULL DEFAULT NOW(),
     expected_return_date    TIMESTAMPTZ     NOT NULL,
     actual_return_date      TIMESTAMPTZ,
@@ -176,9 +169,9 @@ COMMENT ON COLUMN loan.id_employee_registrant IS 'IT employee who physically del
 --  fine (multa)
 -- Fines generated for late return or other non-compliance
 CREATE TABLE fine (
-    id_fine             UUID          PRIMARY KEY,
-    id_student          INTEGER         NOT NULL REFERENCES student(id_student),
-    id_loan             INTEGER         REFERENCES loan(id_loan),
+    fine_id              UUID          PRIMARY KEY,
+    student_id           INTEGER         NOT NULL REFERENCES student(id_student),
+    loan_id              INTEGER         REFERENCES loan(id_loan),
     amount              NUMERIC(10,2)   NOT NULL CHECK (amount > 0),
     reason              TEXT            NOT NULL,
     status              fine_status     NOT NULL DEFAULT 'PENDING',
@@ -194,12 +187,12 @@ COMMENT ON TABLE fine IS 'Economic fines for non-compliance in loans. Updates pe
 -- audit (auditoria)
 -- Immutable record of all critical system operations
 CREATE TABLE audit (
-    id_audit            UUID       PRIMARY KEY,
+    audit_id             UUID       PRIMARY KEY,
     affected_table      VARCHAR(100)    NOT NULL,
     record_id           INTEGER,
     action              audit_action    NOT NULL,
-    id_employee         INTEGER         REFERENCES employee(id_employee),   -- nullable if student action
-    id_student          INTEGER         REFERENCES student(id_student),
+    employee_id         INTEGER         REFERENCES employee(id_employee),   -- nullable if student action
+    student_id          INTEGER         REFERENCES student(id_student),
     user_role           VARCHAR(50),
     previous_data       JSONB,
     new_data            JSONB,
